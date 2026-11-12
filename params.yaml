@@ -1,0 +1,31 @@
+# Single source of truth for all hyperparameters and settings.
+# Read by the Python code AND by DVC (dvc.yaml -> params) so any change
+# here invalidates the right pipeline stages.
+
+seed: 42
+
+data:
+  raw_path: data/raw/creditcard.csv
+  processed_dir: data/processed
+  target: Class
+  test_size: 0.15
+  val_size: 0.15
+
+model:
+  hidden_dims: [64, 32]
+  dropout: 0.2
+
+train:
+  epochs: 15
+  batch_size: 2048
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  # Weight of the positive (fraud) class in the loss. "auto" = n_neg / n_pos
+  pos_weight: auto
+  early_stopping_patience: 3
+
+mlflow:
+  experiment_name: fraud-detection
+  registered_model_name: fraud-detector
+  # Alias given to the best model version (used later by the API)
+  champion_alias: champion

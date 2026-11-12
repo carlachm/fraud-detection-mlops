@@ -1,0 +1,12 @@
+# Pinned runtime dependencies (reproducibility).
+# CPU-only PyTorch (much lighter, recommended for Docker):
+#   pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
+mlflow==3.17.2
+torch==2.15.0
+pandas==3.1.1
+pyarrow==25.0.1
+scikit-learn==1.9.1
+matplotlib==3.11.2
+pyyaml==6.0.3
+boto3==1.43.117
+kagglehub==1.0.3

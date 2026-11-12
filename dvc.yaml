@@ -1,0 +1,29 @@
+# DVC pipeline: `dvc repro` re-runs only the stages whose deps/params changed.
+# Raw data itself is versioned with `dvc add data/raw/creditcard.csv` (see README).
+stages:
+  prepare:
+    cmd: python -m fraud_detection.data prepare
+    deps:
+      - data/raw/creditcard.csv
+      - src/fraud_detection/data.py
+    params:
+      - seed
+      - data
+    outs:
+      - data/processed:
+          persist: false
+
+  train:
+    cmd: python -m fraud_detection.train
+    deps:
+      - data/processed
+      - src/fraud_detection/model.py
+      - src/fraud_detection/train.py
+      - src/fraud_detection/evaluate.py
+    params:
+      - seed
+      - model
+      - train
+    metrics:
+      - metrics.json:
+          cache: false
