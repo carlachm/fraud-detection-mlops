@@ -18,6 +18,8 @@ from fraud_detection.api.features import ride_summary
 from fraud_detection.api.model_store import MODEL_ALIAS, MODEL_NAME
 from fraud_detection.api.schemas import CHANNELS, CLASSES
 
+EXPERIMENT = "ride-classifier-placeholder"
+
 
 class DummyRideClassifier(mlflow.pyfunc.PythonModel):
     def __init__(self, seed: int = 0):
@@ -35,6 +37,7 @@ class DummyRideClassifier(mlflow.pyfunc.PythonModel):
 def register() -> str:
     """Log the placeholder, register it and give it the serving alias. Returns the version."""
     example = pd.DataFrame(np.random.default_rng(1).normal(size=(100, len(CHANNELS))), columns=CHANNELS)
+    mlflow.set_experiment(EXPERIMENT)  # explicit: do not depend on an experiment left active elsewhere
     with mlflow.start_run(run_name="dummy-ride-classifier"):
         mlflow.set_tag("dummy", "true")
         info = mlflow.pyfunc.log_model(
