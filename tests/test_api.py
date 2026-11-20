@@ -115,3 +115,8 @@ def test_api_degrades_safely_without_model(monkeypatch, tmp_path):
         health = c.get("/health").json()
         assert health["status"] == "degraded" and health["model_loaded"] is False
         assert c.post("/v1/predict", json=make_ride()).status_code == 503
+        assert c.get("/ready").status_code == 503  # Kubernetes must not route traffic to this pod
+
+
+def test_ready_once_model_is_loaded(client):
+    assert client.get("/ready").status_code == 200

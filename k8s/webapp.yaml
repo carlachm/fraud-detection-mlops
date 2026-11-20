@@ -1,0 +1,55 @@
+# Streamlit test application; talks to the API through its in-cluster Service name.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ride-webapp
+  namespace: ride
+  labels: {app: ride-webapp}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: ride-webapp}
+  template:
+    metadata:
+      labels: {app: ride-webapp}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: webapp
+          image: ride-webapp:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8501
+          env:
+            - name: API_URL
+              value: "http://ride-api"
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          readinessProbe:
+            httpGet: {path: /_stcore/health, port: 8501}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /_stcore/health, port: 8501}
+            initialDelaySeconds: 20
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ride-webapp
+  namespace: ride
+  labels: {app: ride-webapp}
+spec:
+  type: NodePort
+  selector: {app: ride-webapp}
+  ports:
+    - name: http
+      port: 8501
+      targetPort: 8501
+      nodePort: 30501

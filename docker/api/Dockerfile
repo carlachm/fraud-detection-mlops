@@ -30,7 +30,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev
 
 # Do not run as root; the prediction log is the only place the API writes to
-RUN useradd --create-home app \
+RUN useradd --create-home --uid 10001 app \
     && mkdir -p logs \
     && chown -R app:app /app/logs
 USER app

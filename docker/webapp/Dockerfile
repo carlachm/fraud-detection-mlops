@@ -22,7 +22,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 COPY webapp ./webapp
 
-RUN useradd --create-home app && chown -R app:app /app
+RUN useradd --create-home --uid 10001 app && chown -R app:app /app
 USER app
 
 EXPOSE 8501

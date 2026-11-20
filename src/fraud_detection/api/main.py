@@ -96,6 +96,14 @@ def health() -> Health:
     )
 
 
+@app.get("/ready")
+def ready() -> dict:
+    """Readiness probe: 200 only once a model is loaded (Kubernetes sends no traffic before that)."""
+    if state["loaded"] is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    return {"status": "ready"}
+
+
 @app.post("/v1/predict", response_model=Prediction)
 def predict(ride: Ride) -> Prediction:
     loaded = state["loaded"]

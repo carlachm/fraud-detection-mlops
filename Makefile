@@ -8,10 +8,10 @@ IMAGE ?= fraud-detection-train
 API_IMAGE ?= ride-api
 WEB_IMAGE ?= ride-webapp
 
-.PHONY: help install lock up down logs dvc-setup data sample prepare train repro push test lint format docker-build docker-smoke placeholder api webapp serving-build serving-smoke load clean
+.PHONY: help install lock up down logs dvc-setup data sample prepare train repro push test lint format docker-build docker-smoke placeholder api webapp serving-build serving-smoke k8s-up k8s-down load clean
 
 help:  ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
 install:  ## Create .venv exactly as described in uv.lock (project + dev tools)
 	uv sync --locked
@@ -87,6 +87,14 @@ serving-build:  ## Build the API and web app images locally
 
 serving-smoke: serving-build  ## Build + smoke test of the serving images (same as the CI)
 	bash scripts/smoke_test_serving.sh $(API_IMAGE):dev $(WEB_IMAGE):dev
+
+k8s-up: serving-build  ## Local cluster (kind), load the images and deploy the stack (needs `make up` + a registered model)
+	kind get clusters | grep -qx ride || kind create cluster --name ride --config k8s/kind-config.yaml
+	kind load docker-image $(API_IMAGE):dev $(WEB_IMAGE):dev --name ride
+	bash scripts/deploy_k8s.sh $(API_IMAGE):dev $(WEB_IMAGE):dev
+
+k8s-down:  ## Delete the local cluster
+	kind delete cluster --name ride
 
 clean:  ## Remove caches
 	rm -rf .pytest_cache .ruff_cache .coverage htmlcov mlruns coverage.xml junit.xml
