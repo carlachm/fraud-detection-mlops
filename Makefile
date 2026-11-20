@@ -5,8 +5,10 @@ export
 
 RUN = uv run
 IMAGE ?= fraud-detection-train
+API_IMAGE ?= ride-api
+WEB_IMAGE ?= ride-webapp
 
-.PHONY: help install lock up down logs dvc-setup data sample prepare train repro push test lint format docker-build docker-smoke clean
+.PHONY: help install lock up down logs dvc-setup data sample prepare train repro push test lint format docker-build docker-smoke placeholder api webapp serving-build serving-smoke load clean
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -66,6 +68,25 @@ docker-build:  ## Build the training image locally
 
 docker-smoke: docker-build  ## Build + smoke test the image (same as the CI)
 	bash scripts/smoke_test.sh $(IMAGE):dev
+
+api:  ## Run the API locally (needs MLFLOW_TRACKING_URI and a registered model, see `make placeholder`)
+	PREDICTION_LOG_PATH=logs/predictions.jsonl $(RUN) uvicorn fraud_detection.api.main:app --reload --port 8000
+
+placeholder:  ## Register the placeholder ride classifier in MLflow (until the real model is trained)
+	$(RUN) python -m fraud_detection.api.dummy_model
+
+webapp:  ## Run the web app locally (API on :8000)
+	API_URL=http://localhost:8000 $(RUN) streamlit run webapp/app.py
+
+load:  ## Load test of the API (20 users, 1 min), report in reports/
+	mkdir -p reports && $(RUN) locust -f loadtest/locustfile.py --host http://localhost:8000 --headless -u 20 -r 5 -t 1m --csv reports/load_local
+
+serving-build:  ## Build the API and web app images locally
+	docker build -f docker/api/Dockerfile -t $(API_IMAGE):dev .
+	docker build -f docker/webapp/Dockerfile -t $(WEB_IMAGE):dev .
+
+serving-smoke: serving-build  ## Build + smoke test of the serving images (same as the CI)
+	bash scripts/smoke_test_serving.sh $(API_IMAGE):dev $(WEB_IMAGE):dev
 
 clean:  ## Remove caches
 	rm -rf .pytest_cache .ruff_cache .coverage htmlcov mlruns coverage.xml junit.xml
