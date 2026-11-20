@@ -10,3 +10,6 @@ data:
   MLFLOW_TRACKING_URI: "http://host.docker.internal:5000"
   MODEL_NAME: "ride-classifier"
   MODEL_ALIAS: "champion"
+  # MLflow advertises direct (presigned) downloads from MinIO, whose address (minio:9000) only exists inside
+  # docker compose. Force the client to download through the MLflow server instead.
+  MLFLOW_ENABLE_PROXY_MULTIPART_DOWNLOAD: "false"

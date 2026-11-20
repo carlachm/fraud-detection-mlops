@@ -193,8 +193,8 @@ make serving-build && MLFLOW_URI_FOR_PODS=http://host.docker.internal:5000 bash 
 make k8s-forward              # API sur :8080, web sur :8501
 ```
 
-Sur macOS, le port 5000 est pris par AirPlay Receiver : changer le port de MLflow ou le désactiver
-(*Réglages → Général → AirDrop et Handoff*), puis adapter `MLFLOW_URI_FOR_PODS`.
+Sur macOS, le port 5000 est pris par AirPlay Receiver : mettre `MLFLOW_PORT=5050` dans `.env` (MLflow sera sur
+http://localhost:5050) et lancer le déploiement avec `MLFLOW_URI_FOR_PODS=http://host.docker.internal:5050`.
 
 _À compléter avec les captures (Swagger, application web, `kubectl get pods`) et les mesures de charge._
 
