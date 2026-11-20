@@ -29,3 +29,9 @@ mlflow:
   registered_model_name: fraud-detector
   # Alias given to the best model version (used later by the API)
   champion_alias: champion
+
+# Quality gate: a model below this bar is never promoted and the training
+# command exits with an error (red CI). A random classifier has a PR-AUC equal
+# to the fraud ratio (~0.0017 on the real data).
+quality_gate:
+  min_test_pr_auc: 0.5

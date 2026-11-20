@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 import tempfile
 from pathlib import Path
 
@@ -138,7 +139,9 @@ def run(params: dict | None = None) -> dict:
         val_metrics = compute_metrics(y_val, model.predict_proba(x_val), threshold)
         test_proba = model.predict_proba(x_test)
         test_metrics = compute_metrics(y_test, test_proba, threshold)
-        mlflow.log_metric("threshold", threshold)
+        # "Better than random" proof: a random classifier's PR-AUC = fraud ratio
+        baseline = float(y_test.mean())
+        mlflow.log_metrics({"baseline_random_pr_auc": baseline, "threshold": threshold})
         mlflow.log_metrics({f"val_{k}": v for k, v in val_metrics.items()})
         mlflow.log_metrics({f"test_{k}": v for k, v in test_metrics.items()})
 
@@ -165,14 +168,24 @@ def run(params: dict | None = None) -> dict:
         client = MlflowClient()
         version = str(model_info.registered_model_version)
         client.set_model_version_tag(mlf["registered_model_name"], version, "threshold", f"{threshold:.6f}")
-        promoted = promote_if_better(
-            client, mlf["registered_model_name"], version, test_metrics["pr_auc"], alias=mlf["champion_alias"]
-        )
+        min_score = params.get("quality_gate", {}).get("min_test_pr_auc", 0.0)
+        gate_passed = test_metrics["pr_auc"] >= min_score and test_metrics["pr_auc"] > baseline
+        mlflow.set_tag("quality_gate", "passed" if gate_passed else "failed")
+        if gate_passed:
+            promoted = promote_if_better(
+                client, mlf["registered_model_name"], version, test_metrics["pr_auc"], alias=mlf["champion_alias"]
+            )
+        else:
+            logger.warning("Quality gate failed: test_pr_auc=%.4f < %.4f", test_metrics["pr_auc"], min_score)
+            client.set_model_version_tag(mlf["registered_model_name"], version, "promotion", "gate_failed")
+            promoted = False
 
         summary = {
             "run_id": active_run.info.run_id,
             "model_version": version,
             "promoted": promoted,
+            "quality_gate_passed": gate_passed,
+            "baseline_random_pr_auc": baseline,
             "threshold": threshold,
             **{f"test_{k}": v for k, v in test_metrics.items()},
         }
@@ -185,7 +198,9 @@ def run(params: dict | None = None) -> dict:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    run()
+    summary = run()
+    if not summary["quality_gate_passed"]:
+        sys.exit(1)  # makes the CI job / DVC stage fail
 
 
 if __name__ == "__main__":

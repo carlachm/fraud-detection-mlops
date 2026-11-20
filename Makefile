@@ -1,18 +1,21 @@
 # Shortcuts for the most common commands. `make help` lists them.
+# Every Python command goes through `uv run` (no venv activation needed).
 -include .env
 export
 
-PYTHON ?= python
-TORCH_CPU = --extra-index-url https://download.pytorch.org/whl/cpu
+RUN = uv run
+IMAGE ?= fraud-detection-train
 
-.PHONY: help install up down logs dvc-setup data prepare train repro push test lint format clean
+.PHONY: help install lock up down logs dvc-setup data sample prepare train repro push test lint format docker-build docker-smoke clean
 
 help:  ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
-install:  ## Install the package + dev tools (CPU torch)
-	$(PYTHON) -m pip install -r requirements-dev.txt $(TORCH_CPU)
-	$(PYTHON) -m pip install -e . --no-deps
+install:  ## Create .venv exactly as described in uv.lock (project + dev tools)
+	uv sync --locked
+
+lock:  ## Update uv.lock after editing pyproject.toml (then commit uv.lock)
+	uv lock
 
 up:  ## Start the dev stack (MinIO, PostgreSQL, MLflow)
 	docker compose up -d --build
@@ -27,33 +30,43 @@ dvc-setup:  ## Init DVC with the MinIO remote
 	bash scripts/setup_dvc.sh
 
 data:  ## Download the Kaggle dataset and version it with DVC
-	$(PYTHON) -m fraud_detection.data download
-	dvc add data/raw/creditcard.csv
-	dvc push
+	$(RUN) python -m fraud_detection.data download
+	$(RUN) dvc add data/raw/creditcard.csv
+	$(RUN) dvc push
+
+sample:  ## Generate a small synthetic dataset (no Kaggle account needed)
+	$(RUN) python -m fraud_detection.data sample --rows 20000
 
 prepare:  ## Validate + split the raw data
-	$(PYTHON) -m fraud_detection.data prepare
+	$(RUN) python -m fraud_detection.data prepare
 
-train:  ## Train, log to MLflow, register the model
-	$(PYTHON) -m fraud_detection.train
+train:  ## Train, log to MLflow, register the model (fails if quality gate fails)
+	$(RUN) python -m fraud_detection.train
 
 repro:  ## Re-run the DVC pipeline (prepare -> train) when something changed
-	dvc repro
+	$(RUN) dvc repro
 
 push:  ## Push data/pipeline outputs to the DVC remote
-	dvc push
+	$(RUN) dvc push
 
 test:  ## Run the test suite with coverage
-	pytest --cov=fraud_detection --cov-report=term-missing
+	$(RUN) pytest --cov=fraud_detection --cov-report=term-missing
 
-lint:  ## Lint + check formatting
-	ruff check .
-	ruff format --check .
+lint:  ## Lint + check formatting (same as the CI)
+	uv lock --check
+	$(RUN) ruff check .
+	$(RUN) ruff format --check .
 
 format:  ## Auto-format the code
-	ruff check --fix .
-	ruff format .
+	$(RUN) ruff check --fix .
+	$(RUN) ruff format .
+
+docker-build:  ## Build the training image locally
+	docker build -t $(IMAGE):dev .
+
+docker-smoke: docker-build  ## Build + smoke test the image (same as the CI)
+	bash scripts/smoke_test.sh $(IMAGE):dev
 
 clean:  ## Remove caches
-	rm -rf .pytest_cache .ruff_cache .coverage htmlcov mlruns
+	rm -rf .pytest_cache .ruff_cache .coverage htmlcov mlruns coverage.xml junit.xml
 	find . -name __pycache__ -prune -exec rm -rf {} +

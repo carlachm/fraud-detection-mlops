@@ -3,6 +3,7 @@
 Usage:
     python -m fraud_detection.data download   # Kaggle -> data/raw/creditcard.csv
     python -m fraud_detection.data prepare    # raw -> train/val/test parquet
+    python -m fraud_detection.data sample     # synthetic data (CI, smoke tests, demos)
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import logging
 import shutil
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
@@ -44,6 +46,23 @@ def download_raw_data(dest: Path) -> Path:
     shutil.copy(download_dir / "creditcard.csv", dest)
     logger.info("Raw data saved to %s", dest)
     return dest
+
+
+def synthetic_dataset(n_rows: int = 3000, fraud_ratio: float = 0.05, seed: int = 0) -> pd.DataFrame:
+    """Fake dataset with the exact Kaggle schema.
+
+    Used by the tests and the CI smoke test, so they never need Kaggle
+    credentials nor the real 150 MB file.
+    """
+    rng = np.random.default_rng(seed)
+    y = (rng.random(n_rows) < fraud_ratio).astype(int)
+    x = rng.normal(size=(n_rows, len(FEATURE_COLUMNS))).astype("float32")
+    x[y == 1, 1:5] += 2.5  # frauds are separable on a few V features
+    df = pd.DataFrame(x, columns=FEATURE_COLUMNS)
+    df["Time"] = rng.uniform(0, 172_800, n_rows)
+    df["Amount"] = rng.exponential(80, n_rows)
+    df[TARGET_COLUMN] = y
+    return df
 
 
 # --------------------------------------------------------------------------- #
@@ -126,12 +145,18 @@ def load_split(name: str, params: dict) -> tuple[pd.DataFrame, pd.Series]:
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("step", choices=["download", "prepare"])
+    parser.add_argument("step", choices=["download", "prepare", "sample"])
+    parser.add_argument("--rows", type=int, default=3000, help="number of rows for `sample`")
     args = parser.parse_args()
 
     params = load_params()
+    raw_path = PROJECT_ROOT / params["data"]["raw_path"]
     if args.step == "download":
-        download_raw_data(PROJECT_ROOT / params["data"]["raw_path"])
+        download_raw_data(raw_path)
+    elif args.step == "sample":
+        raw_path.parent.mkdir(parents=True, exist_ok=True)
+        synthetic_dataset(args.rows).to_csv(raw_path, index=False)
+        logger.info("Synthetic dataset (%d rows) written to %s", args.rows, raw_path)
     else:
         prepare(params)
 

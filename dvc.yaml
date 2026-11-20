@@ -24,6 +24,7 @@ stages:
       - seed
       - model
       - train
+      - quality_gate
     metrics:
       - metrics.json:
           cache: false
