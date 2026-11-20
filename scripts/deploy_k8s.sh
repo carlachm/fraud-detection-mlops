@@ -2,6 +2,8 @@
 # Deploy the serving stack on the current kubectl context (kind / Docker Desktop / minikube).
 #   bash scripts/deploy_k8s.sh <api-image:tag> <webapp-image:tag>
 #   bash scripts/deploy_k8s.sh ride-api:dev ride-webapp:dev      # images loaded locally (make k8s-up)
+# MLFLOW_URI_FOR_PODS overrides the MLflow address written in the ConfigMap (default: k8s/configmap.yaml),
+# e.g. on a Mac where port 5000 is taken by AirPlay: MLFLOW_URI_FOR_PODS=http://host.docker.internal:5050
 # Waits for the rollout, then checks /ready and a real prediction THROUGH the Service
 # (kubectl port-forward works the same on kind, Docker Desktop and minikube).
 set -euo pipefail
@@ -11,7 +13,12 @@ WEB_IMAGE="${2:?usage: deploy_k8s.sh <api-image:tag> <webapp-image:tag>}"
 NS=ride
 cd "$(dirname "$0")/.."
 
-kubectl apply -f k8s/namespace.yaml -f k8s/configmap.yaml
+kubectl apply -f k8s/namespace.yaml
+if [ -n "${MLFLOW_URI_FOR_PODS:-}" ]; then
+  sed "s#http://host.docker.internal:5000#${MLFLOW_URI_FOR_PODS}#" k8s/configmap.yaml | kubectl apply -f -
+else
+  kubectl apply -f k8s/configmap.yaml
+fi
 # The image is injected at deploy time so the manifests stay generic
 sed "s#image: ride-api:dev#image: ${API_IMAGE}#" k8s/api.yaml | kubectl apply -f -
 sed "s#image: ride-webapp:dev#image: ${WEB_IMAGE}#" k8s/webapp.yaml | kubectl apply -f -

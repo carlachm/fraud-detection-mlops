@@ -188,7 +188,13 @@ make up && make placeholder   # MLflow + modèle factice (jusqu'à l'entraîneme
 make api                      # http://localhost:8000/docs
 make webapp                   # http://localhost:8501
 make k8s-up                   # cluster kind local + déploiement (API sur :8080, web sur :8501)
+# ou, avec Kubernetes de Docker Desktop (testé) :
+make serving-build && MLFLOW_URI_FOR_PODS=http://host.docker.internal:5000 bash scripts/deploy_k8s.sh ride-api:dev ride-webapp:dev
+make k8s-forward              # API sur :8080, web sur :8501
 ```
+
+Sur macOS, le port 5000 est pris par AirPlay Receiver : changer le port de MLflow ou le désactiver
+(*Réglages → Général → AirDrop et Handoff*), puis adapter `MLFLOW_URI_FOR_PODS`.
 
 _À compléter avec les captures (Swagger, application web, `kubectl get pods`) et les mesures de charge._
 
