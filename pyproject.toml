@@ -28,6 +28,7 @@ dev = [
     { include-group = "lint" },
     { include-group = "test" },
     { include-group = "loadtest" },
+    { include-group = "webapp" },
 ]
 lint = ["ruff>=0.14"]                       # CI lint job: uv sync --only-group lint
 loadtest = [
@@ -37,6 +38,10 @@ test = [
     "httpx>=0.28.1",
     "pytest>=8.4",
     "pytest-cov>=7.0",
+]
+webapp = [
+    "requests>=2.34.2",
+    "streamlit>=1.67.0",
 ]
 
 [build-system]
