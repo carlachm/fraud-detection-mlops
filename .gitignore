@@ -4,6 +4,8 @@
 # Data (versioned with DVC, not Git)
 /data/raw/*
 !/data/raw/.gitkeep
+!/data/raw/*.dvc
+!/data/raw/.gitignore
 /data/processed/*
 !/data/processed/.gitkeep
 
