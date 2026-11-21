@@ -162,6 +162,42 @@ Image : `docker pull <DOCKERHUB_USERNAME>/fraud-detection-train:<sha>` — _URL 
 
 Le workflow de l'équipe (branches, commits, PR) est décrit dans [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Serving — API, application web et Kubernetes
+
+```
+navigateur ──▶ ride-webapp (Streamlit, :8501) ──▶ ride-api (FastAPI, :8000) ──▶ MLflow registry (models:/ride-classifier@champion)
+                                                      │
+                                                      ├─▶ /metrics (Prometheus)
+                                                      └─▶ logs/predictions.jsonl (monitoring, dérive)
+```
+
+| Élément | Fichier | Rôle |
+|---|---|---|
+| API | `src/fraud_detection/api/` | `/v1/predict`, `/v1/feedback`, `/health`, `/ready`, `/metrics`, Swagger sur `/docs` |
+| Application web | `webapp/` | trajet de démo ou fichier CSV/Parquet (un ou plusieurs trajets), probabilités des 5 classes, retour de label |
+| Images | `docker/api/`, `docker/webapp/` | utilisateur non-root, healthcheck, l'image web n'embarque ni torch ni mlflow |
+| Kubernetes | `k8s/` | 2 réplicas d'API (RollingUpdate sans indisponibilité), sondes startup/readiness/liveness, requests/limits |
+| CI | `ci.yml` › `serving` | build des 2 images, **smoke test des conteneurs**, push Docker Hub sur `main` |
+| CD | `deploy.yml` | runner **self-hosted** : déploie sur le cluster local les images de CI et vérifie une prédiction via le Service ; rollback automatique si le rollout échoue |
+| Charge | `loadtest/locustfile.py` | `make load` |
+
+Contrat d'interface complet (format du modèle, de l'API, des logs et des métriques) : [docs/api-contract.md](docs/api-contract.md).
+
+```bash
+make up && make placeholder   # MLflow + modèle factice (jusqu'à l'entraînement du vrai modèle)
+make api                      # http://localhost:8000/docs
+make webapp                   # http://localhost:8501
+make k8s-up                   # cluster kind local + déploiement (API sur :8080, web sur :8501)
+# ou, avec Kubernetes de Docker Desktop (testé) :
+make serving-build && MLFLOW_URI_FOR_PODS=http://host.docker.internal:5000 bash scripts/deploy_k8s.sh ride-api:dev ride-webapp:dev
+make k8s-forward              # API sur :8080, web sur :8501
+```
+
+Sur macOS, le port 5000 est pris par AirPlay Receiver : mettre `MLFLOW_PORT=5050` dans `.env` (MLflow sera sur
+http://localhost:5050) et lancer le déploiement avec `MLFLOW_URI_FOR_PODS=http://host.docker.internal:5050`.
+
+_À compléter avec les captures (Swagger, application web, `kubectl get pods`) et les mesures de charge._
+
 ## Choix techniques
 
 - **Modèle** : MLP PyTorch (couches 64 → 32, BatchNorm, Dropout). Les données sont tabulaires

@@ -2,8 +2,9 @@
 # smoke-tested. On main, the image is also pushed to Docker Hub, tagged with the commit.
 #
 #   lint ──┐
-#          ├──> docker (build -> smoke test -> push if main)
-#   test ──┘
+#          ├──> docker  (training image: build -> smoke test -> push if main)
+#   test ──┤
+#          └──> serving (API + web app images: build -> smoke test -> push if main)
 name: ci
 
 on:
@@ -26,6 +27,8 @@ permissions:
 env:
   UV_VERSION: "0.13.5"
   IMAGE_NAME: fraud-detection-train
+  API_IMAGE_NAME: ride-api
+  WEB_IMAGE_NAME: ride-webapp
 
 jobs:
   lint:
@@ -132,3 +135,92 @@ jobs:
           echo "### Image published :whale:" >> "$GITHUB_STEP_SUMMARY"
           echo "\`docker pull ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "https://hub.docker.com/r/${{ steps.meta.outputs.image }}/tags" >> "$GITHUB_STEP_SUMMARY"
+
+  serving:
+    name: serving
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Compute image tags (short commit SHA, never latest)
+        id: meta
+        run: |
+          echo "tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "api=${{ vars.DOCKERHUB_USERNAME || 'local' }}/${API_IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+          echo "web=${{ vars.DOCKERHUB_USERNAME || 'local' }}/${WEB_IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # 1) Build both images for the runner's architecture and load them locally to test them
+      - name: Build API image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/api/Dockerfile
+          load: true
+          tags: ${{ env.API_IMAGE_NAME }}:ci
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      - name: Build web app image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/webapp/Dockerfile
+          load: true
+          tags: ${{ env.WEB_IMAGE_NAME }}:ci
+          cache-from: type=gha,scope=webapp
+          cache-to: type=gha,mode=max,scope=webapp
+
+      # 2) Test the containers: health, a real prediction, input validation, metrics, web app up
+      - name: Smoke test (API + web app)
+        run: bash scripts/smoke_test_serving.sh ${{ env.API_IMAGE_NAME }}:ci ${{ env.WEB_IMAGE_NAME }}:ci
+
+      # 3) Only on main: publish multi-arch images (amd64 for CI/cloud, arm64 for Apple Silicon Macs)
+      - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up QEMU (arm64 emulation)
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - name: Push API image to Docker Hub
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/api/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.api }}:${{ steps.meta.outputs.tag }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=api
+
+      - name: Push web app image to Docker Hub
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/webapp/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.web }}:${{ steps.meta.outputs.tag }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=webapp
+
+      - name: Summary
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        run: |
+          echo "### Serving images published :whale:" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`docker pull ${{ steps.meta.outputs.api }}:${{ steps.meta.outputs.tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`docker pull ${{ steps.meta.outputs.web }}:${{ steps.meta.outputs.tag }}\`" >> "$GITHUB_STEP_SUMMARY"

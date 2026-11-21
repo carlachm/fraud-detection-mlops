@@ -15,6 +15,9 @@ dependencies = [
     "pyyaml>=6.0.3",
     "boto3>=1.40",
     "kagglehub>=1.0",
+    "fastapi>=0.165.0",
+    "uvicorn[standard]>=0.54.0",
+    "prometheus-client>=0.26.0",
 ]
 
 # What you need to DEVELOP (synced by default with `uv sync`,
@@ -24,9 +27,22 @@ dev = [
     "dvc[s3]>=3.63",
     { include-group = "lint" },
     { include-group = "test" },
+    { include-group = "loadtest" },
+    { include-group = "webapp" },
 ]
 lint = ["ruff>=0.14"]                       # CI lint job: uv sync --only-group lint
-test = ["pytest>=8.4", "pytest-cov>=7.0"]
+loadtest = [
+    "locust>=2.47.0",
+]
+test = [
+    "httpx>=0.28.1",
+    "pytest>=8.4",
+    "pytest-cov>=7.0",
+]
+webapp = [
+    "requests>=2.34.2",
+    "streamlit>=1.67.0",
+]
 
 [build-system]
 requires = ["setuptools>=68"]

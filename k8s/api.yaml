@@ -1,0 +1,75 @@
+# Ride classification API. Image tag is set at deploy time by scripts/deploy_k8s.sh
+# (never `latest`: the tag is the git commit, so a rollback is `kubectl rollout undo`).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ride-api
+  namespace: ride
+  labels: {app: ride-api}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: ride-api}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1} # never fewer ready pods than replicas during a rollout
+  template:
+    metadata:
+      labels: {app: ride-api}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics/
+        prometheus.io/port: "8000"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+        - name: api
+          image: ride-api:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef: {name: ride-api-config}
+          volumeMounts:
+            - {name: logs, mountPath: /app/logs}
+          resources:
+            requests: {cpu: 250m, memory: 512Mi}
+            limits: {cpu: "1", memory: 1Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          # Startup: the model is downloaded from MLflow, which can take a while
+          startupProbe:
+            httpGet: {path: /ready, port: 8000}
+            periodSeconds: 5
+            failureThreshold: 36
+          # Readiness: "send me traffic" only once the model is loaded (/ready answers 503 otherwise)
+          readinessProbe:
+            httpGet: {path: /ready, port: 8000}
+            periodSeconds: 5
+          # Liveness: "restart me if I am stuck"; /health stays 200 in degraded mode on purpose
+          livenessProbe:
+            httpGet: {path: /health, port: 8000}
+            periodSeconds: 10
+            failureThreshold: 3
+      volumes:
+        - name: logs
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ride-api
+  namespace: ride
+  labels: {app: ride-api}
+spec:
+  type: NodePort
+  selector: {app: ride-api}
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
+      nodePort: 30080

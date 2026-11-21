@@ -10,6 +10,9 @@ mlartifacts
 metrics.json
 tests
 docker
+logs
+reports
+loadtest
 **/__pycache__
 .pytest_cache
 .ruff_cache

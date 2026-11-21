@@ -1,0 +1,15 @@
+# Settings shared by the API pods. Nothing secret here: MLflow is started with --serve-artifacts,
+# so the API downloads the model THROUGH the MLflow server and needs no MinIO credentials.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ride-api-config
+  namespace: ride
+data:
+  # The MLflow stack runs on the host (`make up`); host.docker.internal is how a kind/Docker Desktop pod reaches it.
+  MLFLOW_TRACKING_URI: "http://host.docker.internal:5000"
+  MODEL_NAME: "ride-classifier"
+  MODEL_ALIAS: "champion"
+  # MLflow advertises direct (presigned) downloads from MinIO, whose address (minio:9000) only exists inside
+  # docker compose. Force the client to download through the MLflow server instead.
+  MLFLOW_ENABLE_PROXY_MULTIPART_DOWNLOAD: "false"

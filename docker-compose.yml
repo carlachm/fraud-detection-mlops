@@ -6,8 +6,10 @@
 
 services:
   minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
-    command: server /data --console-address ":9001"
+    # MinIO no longer publishes images on Docker Hub / Quay: bitnamilegacy keeps the last public builds (pinned)
+    image: bitnamilegacy/minio:2025.7.23-debian-12-r5
+    entrypoint: ["/opt/bitnami/minio/bin/minio"]
+    command: server /bitnami/minio/data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
@@ -15,7 +17,7 @@ services:
       - "9000:9000"
       - "9001:9001"
     volumes:
-      - minio_data:/data
+      - minio_data:/bitnami/minio/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
@@ -24,7 +26,7 @@ services:
 
   # One-shot job: create the buckets (models/artifacts + DVC data)
   minio-init:
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    image: bitnamilegacy/minio-client:2025.7.21-debian-12-r3
     depends_on:
       minio:
         condition: service_healthy
@@ -61,13 +63,13 @@ services:
       minio-init:
         condition: service_completed_successfully
     environment:
-      MLFLOW_BACKEND_STORE_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      MLFLOW_BACKEND_STORE_URI: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       MLFLOW_ARTIFACTS_DESTINATION: s3://${MLFLOW_BUCKET}
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
     ports:
-      - "5000:5000"
+      - "${MLFLOW_PORT:-5000}:5000" # macOS: AirPlay Receiver uses 5000, set MLFLOW_PORT=5050 in .env
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
       interval: 10s

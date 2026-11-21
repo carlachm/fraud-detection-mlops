@@ -1,0 +1,58 @@
+# Continuous deployment: once CI is green on main (images pushed to Docker Hub with the commit tag),
+# deploy those exact images on the local Kubernetes cluster.
+#
+# Runs on the SELF-HOSTED runner (your machine) because the cluster (kind / Docker Desktop) is local.
+# Needs: kubectl pointing at the cluster, the MLflow stack up (`make up`), a registered model.
+#   gh workflow run deploy.yml -f tag=1a2b3c4      # manual deploy / rollback to a given commit tag
+name: deploy
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag (short commit SHA) to deploy"
+        required: true
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: deploy
+    # Only after a successful CI run (or by hand)
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: self-hosted
+    timeout-minutes: 20
+    env:
+      TAG: ${{ inputs.tag || '' }}
+      RUN_SHA: ${{ github.event.workflow_run.head_sha || '' }}
+      DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Compute image names
+        id: img
+        run: |
+          : "${DOCKERHUB_USERNAME:?set the DOCKERHUB_USERNAME repository variable}"
+          TAG="${TAG:-${RUN_SHA::7}}"
+          echo "api=${DOCKERHUB_USERNAME}/ride-api:${TAG}" >> "$GITHUB_OUTPUT"
+          echo "web=${DOCKERHUB_USERNAME}/ride-webapp:${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy and check through the Service
+        run: bash scripts/deploy_k8s.sh "${{ steps.img.outputs.api }}" "${{ steps.img.outputs.web }}"
+
+      - name: Summary
+        run: |
+          echo "### Deployed on Kubernetes :rocket:" >> "$GITHUB_STEP_SUMMARY"
+          echo "- API: \`${{ steps.img.outputs.api }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Web app: \`${{ steps.img.outputs.web }}\`" >> "$GITHUB_STEP_SUMMARY"
