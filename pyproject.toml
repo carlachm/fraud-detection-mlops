@@ -1,31 +1,49 @@
-[build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "fraud-detection"
 version = "0.1.0"
 description = "MLOps pipeline for credit card fraud detection"
 readme = "README.md"
-requires-python = ">=3.11,<3.14"
-# Exact versions are pinned in requirements.txt (reproducibility)
+requires-python = ">=3.12,<3.14"
+# What the project needs to RUN. Exact versions live in uv.lock (commit it!).
 dependencies = [
-    "mlflow>=3.10",
-    "torch>=2.4",
-    "pandas>=2.2",
-    "pyarrow>=15",
-    "scikit-learn>=1.5",
-    "matplotlib>=3.8",
-    "pyyaml>=6",
-    "boto3>=1.34",
-    "kagglehub>=0.3",
+    "mlflow>=3.17.2",
+    "torch>=2.9",
+    "pandas>=3.0",
+    "pyarrow>=21",
+    "scikit-learn>=1.9.1",
+    "matplotlib>=3.10",
+    "pyyaml>=6.0.3",
+    "boto3>=1.40",
+    "kagglehub>=1.0",
 ]
 
-[project.optional-dependencies]
-dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6", "dvc[s3]>=3.50"]
+# What you need to DEVELOP (synced by default with `uv sync`,
+# skipped in Docker with `uv sync --no-dev`)
+[dependency-groups]
+dev = [
+    "dvc[s3]>=3.63",
+    { include-group = "lint" },
+    { include-group = "test" },
+]
+lint = ["ruff>=0.14"]                       # CI lint job: uv sync --only-group lint
+test = ["pytest>=8.4", "pytest-cov>=7.0"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# --- PyTorch CPU-only on Linux (Docker, CI): ~200 MB instead of ~3 GB of CUDA libs.
+# On macOS the default PyPI wheel is already CPU/MPS.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -34,7 +52,7 @@ filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning", "ignore
 
 [tool.ruff]
 line-length = 120
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "W"]

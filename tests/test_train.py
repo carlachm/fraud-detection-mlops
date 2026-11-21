@@ -53,3 +53,14 @@ def test_worse_model_is_not_promoted(params, local_mlflow):
     second = run(params)
     if second["test_pr_auc"] <= first["test_pr_auc"]:
         assert second["promoted"] is False
+
+
+def test_quality_gate_blocks_bad_model(params, local_mlflow):
+    prepare(params)
+    params["quality_gate"] = {"min_test_pr_auc": 1.01}  # impossible bar
+    summary = run(params)
+    assert summary["quality_gate_passed"] is False
+    assert summary["promoted"] is False
+    client = MlflowClient()
+    version = client.get_model_version(params["mlflow"]["registered_model_name"], summary["model_version"])
+    assert version.tags["promotion"] == "gate_failed"

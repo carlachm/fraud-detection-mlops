@@ -1,0 +1,49 @@
+# Training workflow (course "workflow 2"): train, check the quality gate,
+# promote the model in MLflow only if it is good enough.
+#
+# Runs on a SELF-HOSTED runner (your machine) because it needs the MLflow
+# server and MinIO started with `make up`, which GitHub's cloud runners cannot reach.
+# Heavy training never runs on every push: manual button, or called later by
+# Airflow / the retraining pipeline (workflow_call).
+name: train
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+concurrency:
+  group: train
+  cancel-in-progress: false  # never kill a training run halfway
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    name: train
+    runs-on: self-hosted
+    timeout-minutes: 60
+    env:
+      MLFLOW_TRACKING_URI: ${{ vars.MLFLOW_TRACKING_URI || 'http://localhost:5000' }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.MINIO_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.5"
+      - name: Install
+        run: uv sync --locked
+      - name: Configure DVC remote and pull the versioned data
+        run: |
+          bash scripts/setup_dvc.sh
+          uv run --no-sync dvc pull
+      - name: Prepare + train (exits 1 if the quality gate fails)
+        run: uv run --no-sync dvc repro --force
+      - name: Metrics
+        if: always()
+        run: |
+          echo "### Training metrics" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          cat metrics.json >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
